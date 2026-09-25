@@ -11,6 +11,7 @@ NestJS backend for a decentralized healthcare system built on Stellar Soroban sm
 - [Configuration](#configuration)
 - [Security Headers](#security-headers)
 - [API Endpoints](#api-endpoints)
+- [Webhooks](#webhooks)
 - [Postman Collection](#postman-collection)
 - [Database Schema](#database-schema)
 - [Error Handling](#error-handling)
@@ -316,6 +317,19 @@ Configured via `helmet()` in `src/main.ts` using `src/security/http-security.con
 | GET | `/clinical-notes` | List notes |
 | POST | `/clinical-notes/:id/sign` | Sign note |
 | GET | `/clinical-notes/:id/completeness` | Completeness check |
+
+## Webhooks
+
+Tenants can subscribe to healthcare events (record uploads, access grants, diagnosis
+updates, and more). Deliveries are signed with HMAC-SHA256 (`X-Webhook-Signature`),
+retried with exponential backoff, replayable from the dead-letter queue, and the
+platform also receives signed inbound callbacks from IPFS, Stellar and insurance
+payers.
+
+See the [webhook integrator guide](docs/webhooks.md) for the delivery headers,
+signature verification snippets (Node and Python), secret rotation semantics, retry
+and alerting behaviour, manual replay, the event catalog, and the inbound signing
+scheme.
 
 ## Postman Collection
 
