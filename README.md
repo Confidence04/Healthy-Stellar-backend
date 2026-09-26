@@ -367,6 +367,11 @@ npm run start:prod
 
 Set `NODE_ENV=production`, configure DB credentials, CORS, HTTPS, and logging before deploying.
 
+For operational procedures used during deployment, recovery, and maintenance — key
+rotation, migration safety, break-glass review, reconciliation, dead-letter queue
+replay, projection rebuilds, and backup/restore — see the
+[operator runbooks](docs/runbooks/README.md).
+
 ## License
 
 MIT
