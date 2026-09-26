@@ -395,3 +395,8 @@ replay, projection rebuilds, and backup/restore — see the
 ## License
 
 MIT
+
+## Handsoff notes
+
+<!-- handsoff-issue-1062 -->
+- #1062: [High] `GdprProcessor.onModuleInit()` — GDPR erasure cascade omits the surgical-management-system module
