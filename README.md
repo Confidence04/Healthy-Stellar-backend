@@ -358,6 +358,10 @@ npm run test:e2e    # e2e
 npm run test:cov    # coverage
 ```
 
+### Load testing
+
+The `load-tests/` directory contains a full k6 load-test suite covering REST endpoints, GraphQL subscriptions, and Stellar blockchain writes. See **[load-tests/README.md](load-tests/README.md)** for prerequisites, scenario descriptions, the baseline/compare/gate regression workflow, CI integration, and Grafana dashboard setup.
+
 ## Deployment
 
 ```bash
