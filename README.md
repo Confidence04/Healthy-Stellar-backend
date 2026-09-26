@@ -11,7 +11,7 @@ NestJS backend for a decentralized healthcare system built on Stellar Soroban sm
 - [Configuration](#configuration)
 - [Security Headers](#security-headers)
 - [API Endpoints](#api-endpoints)
-- [GraphQL API](#graphql-api)
+- [Webhooks](#webhooks)
 - [Postman Collection](#postman-collection)
 - [Database Schema](#database-schema)
 - [Error Handling](#error-handling)
@@ -318,38 +318,18 @@ Configured via `helmet()` in `src/main.ts` using `src/security/http-security.con
 | POST | `/clinical-notes/:id/sign` | Sign note |
 | GET | `/clinical-notes/:id/completeness` | Completeness check |
 
-## GraphQL API
+## Webhooks
 
-The backend exposes a full GraphQL API at `POST /graphql`.
+Tenants can subscribe to healthcare events (record uploads, access grants, diagnosis
+updates, and more). Deliveries are signed with HMAC-SHA256 (`X-Webhook-Signature`),
+retried with exponential backoff, replayable from the dead-letter queue, and the
+platform also receives signed inbound callbacks from IPFS, Stellar and insurance
+payers.
 
-| Feature | Detail |
-|---------|--------|
-| Endpoint | `POST /graphql` |
-| Playground | `GET /graphql` (non-production only) |
-| Transport | HTTP + `graphql-ws` WebSocket subscriptions |
-| Auth | `Authorization: Bearer <token>` header (HTTP) / `connectionParams.authorization` (WS) |
-| Schema | [`docs/schema.graphql`](docs/schema.graphql) |
-
-**Operations at a glance**
-
-- Queries: `me`, `record`, `records`, `accessGrants`, `auditLog`, `provider`, `providers`
-- Mutations: `uploadRecord`, `grantAccess`, `revokeAccess`, `updateProfile`, `registerDevice`, `submitGdprRequest`
-- Subscriptions: `onNewRecord`, `onAccessChanged`
-
-For the full reference — including sample queries/mutations, the subscription client example,
-query complexity/depth limits, Automatic Persisted Queries (APQ), DataLoaders, and the
-schema regeneration workflow — see **[docs/graphql.md](docs/graphql.md)**.
-
-APQ implementation details (issue #676) live in
-**[docs/APQ_PERSISTED_QUERIES_ISSUE_676.md](docs/APQ_PERSISTED_QUERIES_ISSUE_676.md)**.
-
-### Useful scripts
-
-```bash
-npm run export:schema             # Regenerate docs/schema.graphql
-npm run register:graphql-queries  # Register persisted queries in Redis (run before prod deploy)
-npm run generate:graphql-types    # Generate TypeScript types from schema + operations
-```
+See the [webhook integrator guide](docs/webhooks.md) for the delivery headers,
+signature verification snippets (Node and Python), secret rotation semantics, retry
+and alerting behaviour, manual replay, the event catalog, and the inbound signing
+scheme.
 
 ## Postman Collection
 

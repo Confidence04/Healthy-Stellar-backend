@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Created `CONTRIBUTING.md` contributor onboarding guide and repository `CHANGELOG.md` ([#789](https://github.com/Healthy-Stellar/Healthy-Stellar-backend/issues/789)).
+- **Webhooks integrator guide** (`docs/webhooks.md`): outbound delivery headers, HMAC signature verification with Node/Python snippets, secret rotation semantics, retries and failure alerts, manual replay, the event catalog, and the inbound provider signing scheme; linked from the README and covered by `src/webhooks/webhook-signature.docs.spec.ts` ([#1084](https://github.com/Healthy-Stellar/Healthy-Stellar-backend/issues/1084)).
 
 ---
 
