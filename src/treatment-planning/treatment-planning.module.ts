@@ -41,10 +41,10 @@ import { TreatmentPlanningController } from './treatment-planning.controller';
   controllers: [
     TreatmentPlanController,
     MedicalProcedureController,
-    TreatmentPlanningController,
     CarePlanTemplateController,
     TreatmentOutcomeController,
     DecisionSupportController,
+    TreatmentPlanningController,
   ],
   providers: [
     TreatmentPlanService,
