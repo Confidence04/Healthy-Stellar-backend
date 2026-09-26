@@ -202,12 +202,11 @@ export class SubscriptionRenewalTask {
       payment.postedDate = new Date();
       await this.paymentRepo.save(payment);
       return true;
-    } else {
-      payment.status = PaymentStatus.FAILED;
-      payment.notes = 'Payment processing failed at gateway';
-      await this.paymentRepo.save(payment);
-      return false;
     }
+
+    payment.status = PaymentStatus.FAILED;
+    await this.paymentRepo.save(payment);
+    return false;
   }
 
   private async handleFailedPayment(
@@ -216,24 +215,29 @@ export class SubscriptionRenewalTask {
   ): Promise<void> {
     this.logger.warn(`Payment failed for subscription ${subscription.id}`);
 
-    const updatedSubscription = await this.subscriptionService.incrementFailedPaymentCount(subscription.id);
+    // Increment failed payment count
+    await this.subscriptionService.incrementFailedPaymentCount(subscription.id);
 
-    if (updatedSubscription.status === SubscriptionStatus.SUSPENDED) {
-      this.logger.log(`Subscription ${subscription.id} suspended due to too many failed payments`);
-    } else {
-      this.logger.log(
-        `Subscription ${subscription.id} marked as past due (${updatedSubscription.consecutiveFailedPayments}/${updatedSubscription.maxFailedPaymentsBeforeSuspension} failed payments)`,
+    // Check if we should suspend the subscription
+    const updatedSubscription = await this.subscriptionRepo.findOne({
+      where: { id: subscription.id },
+    });
+
+    if (updatedSubscription && updatedSubscription.failedPaymentCount >= 3) {
+      await this.subscriptionService.suspendSubscription(
+        subscription.id,
+        'Multiple failed payment attempts',
       );
+      this.logger.warn(`Subscription ${subscription.id} suspended due to failed payments`);
     }
   }
 
   private async handleNonRenewingSubscription(subscription: PatientSubscription): Promise<void> {
-    subscription.status = SubscriptionStatus.CANCELLED;
-    subscription.cancelledAt = new Date();
-    subscription.cancellationReason = 'Auto-renew disabled';
-    subscription.endDate = new Date();
-    await this.subscriptionRepo.save(subscription);
-
-    this.logger.log(`Cancelled non-renewing subscription ${subscription.id}`);
+    // Check if subscription has expired
+    const now = new Date();
+    if (subscription.endDate && subscription.endDate < now) {
+      await this.subscriptionService.expireSubscription(subscription.id);
+      this.logger.log(`Subscription ${subscription.id} expired`);
+    }
   }
 }
