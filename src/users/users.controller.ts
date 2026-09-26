@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseGuards, ForbiddenException, Req } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { CreatePatientDto } from './dto/create-patient.dto';
@@ -41,7 +41,9 @@ export class UsersController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+  @Roles(UserRole.ADMIN, UserRole.PHYSICIAN, UserRole.NURSE, UserRole.PATIENT)
+  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Req() req: any) {
+    this.assertSelfOrAdmin(req, id);
     return this.usersService.updateUser(id, updateUserDto);
   }
 
@@ -52,7 +54,19 @@ export class UsersController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  @Roles(UserRole.ADMIN, UserRole.PHYSICIAN, UserRole.NURSE, UserRole.PATIENT)
+  findOne(@Param('id') id: string, @Req() req: any) {
+    this.assertSelfOrAdmin(req, id);
     return this.usersService.findOne(id);
+  }
+
+  private assertSelfOrAdmin(req: any, id: string): void {
+    const user = req?.user;
+    if (user?.role === UserRole.ADMIN) {
+      return;
+    }
+    if (user?.id !== id) {
+      throw new ForbiddenException('You are not allowed to access this user');
+    }
   }
 }
