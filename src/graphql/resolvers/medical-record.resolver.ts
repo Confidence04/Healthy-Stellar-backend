@@ -111,9 +111,10 @@ export class MedicalRecordResolver {
   @ResolveField(() => Patient, { nullable: true })
   async patient(
     @Parent() record: MedicalRecord,
-    @Context() ctx: { patientLoader: DataLoader<string, Patient> },
+    @Context() ctx: { patientLoader?: DataLoader<string, Patient> },
   ): Promise<Patient | null> {
-    return ctx.patientLoader.load(record.patientId);
+    const loader = ctx.patientLoader ?? this.dataloaderService.patientLoader;
+    return loader.load(record.patientId);
   }
 
   private toGqlType(r: RecordEntity, uploadedBy: string): MedicalRecord {
