@@ -1,6 +1,6 @@
 import { Controller, Get, Query, Res, HttpStatus } from '@nestjs/common';
 import { Response } from 'express';
-import { I18nService } from '../i18n.service';
+import { I18nService } from './i18n.service';
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 
 @ApiTags('i18n')
