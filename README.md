@@ -400,3 +400,6 @@ MIT
 
 <!-- handsoff-issue-1062 -->
 - #1062: [High] `GdprProcessor.onModuleInit()` — GDPR erasure cascade omits the surgical-management-system module
+
+<!-- handsoff-issue-1064 -->
+- #1064: [High] `SurgicalService.updateSurgicalCase()` reschedule path bypasses the advisory lock, allowing double-booking on reschedule
