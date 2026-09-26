@@ -96,6 +96,7 @@ import { AppointmentsModule } from './appointments/appointments.module';
 import { SurgicalModule } from './surgical-management-system/surgical/Surgical.module';
 import { TelemedicineModule } from './telemedicine-and-remote/src/telemedicine/Telemedicine.module';
 import { User } from './auth/entities/user.entity';
+import { MigrationCliModule } from './Migration-CLI/migration-cli.module';
 
 @Module({
   imports: [
