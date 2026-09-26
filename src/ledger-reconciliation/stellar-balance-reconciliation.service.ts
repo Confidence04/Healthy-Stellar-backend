@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { LedgerReconciliationReport } from './ledger-reconciliation-report.entity';
+import { StellarLedgerEntry } from './stellar-ledger-entry.entity';
 import { NotificationsService } from '../notifications/services/notifications.service';
 
 interface AccountDetail {
@@ -26,6 +27,8 @@ export class StellarBalanceReconciliationService {
   constructor(
     @InjectRepository(LedgerReconciliationReport)
     private readonly reportRepo: Repository<LedgerReconciliationReport>,
+    @InjectRepository(StellarLedgerEntry)
+    private readonly ledgerEntryRepo: Repository<StellarLedgerEntry>,
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
     private readonly notifications: NotificationsService,
@@ -168,7 +171,7 @@ export class StellarBalanceReconciliationService {
 
   /**
    * Retrieves the internal ledger total for a Stellar account.
-   * Returns the sum of net confirmed payment amounts tracked in the database.
+   * Returns the sum of all confirmed payment amounts tracked in the database.
    */
   private async getInternalBalance(accountId: string): Promise<string> {
     // Query the internal ledger: sum of all confirmed incoming payments minus outgoing
