@@ -395,3 +395,8 @@ replay, projection rebuilds, and backup/restore — see the
 ## License
 
 MIT
+
+## Handsoff notes
+
+<!-- handsoff-issue-1068 -->
+- #1068: [Medium] `EncryptionTransformer.to()` swallows encryption errors and silently writes NULL instead of the ciphertext
