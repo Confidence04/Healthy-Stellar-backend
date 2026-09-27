@@ -169,87 +169,67 @@ import { DevicesModule } from '../devices/devices.module';
                       entityId: payload.userId,
                       action: 'CONNECTION_FAILED',
                       userId: payload.userId,
-                      changes: { reason: 'connection_limit_reached' },
+                      changes: { reason: 'connection_registration_failed' },
                       metadata: {
                         clientIp,
-                        reason: 'Subscription connection limit reached',
+                        reason: error instanceof Error ? error.message : 'Unknown error',
                       },
                     });
-                    throw new GraphQLError('Forbidden: subscription connection limit reached', {
-                      extensions: { code: 'FORBIDDEN' },
+                    throw new GraphQLError('Failed to register subscription connection', {
+                      extensions: { code: 'INTERNAL_SERVER_ERROR' },
                     });
                   }
 
-                  // Log successful connection
-                  await auditLogService.log({
-                    entityType: 'GraphQLSubscription',
-                    entityId: connectionId,
-                    action: 'CONNECTED',
+                  return {
                     userId: payload.userId,
-                    changes: { connectionId },
-                    metadata: {
-                      clientIp,
-                    },
-                  });
-
-                  ctx.extra.user = payload;
-                  ctx.extra.connectionId = connectionId;
-                  ctx.extra.connectionParams = ctx.connectionParams ?? {};
+                    sessionId: payload.sessionId,
+                    connectionId,
+                  };
                 } catch (error) {
-                  // Re-throw GraphQL errors
                   if (error instanceof GraphQLError) {
                     throw error;
                   }
-                  // Wrap other errors
-                  throw new GraphQLError('Internal server error', {
-                    extensions: { code: 'INTERNAL_ERROR' },
+                  throw new GraphQLError('Unauthorized', {
+                    extensions: { code: 'UNAUTHENTICATED' },
                   });
                 }
               },
               onDisconnect: async (ctx: any) => {
-                const userId = ctx?.extra?.user?.userId;
-                const connectionId = ctx?.extra?.connectionId;
-                if (userId && connectionId) {
-                  await graphqlPubSubService.unregisterConnection(userId, connectionId);
-
-                  // Log disconnection
-                  try {
-                    await auditLogService.log({
-                      entityType: 'GraphQLSubscription',
-                      entityId: connectionId,
-                      action: 'DISCONNECTED',
-                      userId,
-                      changes: { connectionId },
-                      metadata: {},
-                    });
-                  } catch (error) {
-                    // Silently fail audit logging to avoid blocking disconnect
-                  }
+                const connectionId = ctx.connectionParams?.connectionId;
+                if (connectionId) {
+                  await graphqlPubSubService.unregisterConnection(connectionId);
                 }
               },
             },
           },
 
-          // Inject per-request DataLoaders into GQL context
-          context: ({ req, extra }: { req?: any; extra?: any }) => {
-            const request = req ?? extra?.request ?? { headers: {} };
-            if (!request.user && extra?.user) {
-              request.user = extra.user;
-            }
+          context: ({ req, extra }: { req: any; extra: any }) => {
+            const user = req?.user ?? extra?.user;
+            const connectionParams = extra?.connectionParams ?? req?.connectionParams;
+
+            // DataLoaders are request-scoped: a fresh DataLoaderService is
+            // created per GraphQL operation so batching/caching never leaks
+            // across requests. The individual loaders are also exposed on the
+            // context (patientLoader/providerLoader) for field resolvers that
+            // read them directly.
+            const loaders = new DataLoaderService();
 
             return {
-              req: request,
-              user: request.user,
-              connectionParams: extra?.connectionParams ?? {},
-              // loaders are populated by the DataLoaderService in each resolver
+              req,
+              user,
+              connectionParams,
+              loaders,
+              patientLoader: loaders.patients,
+              providerLoader: loaders.providers,
             };
           },
         };
       },
     }),
+    GdprModule,
+    DevicesModule,
   ],
   providers: [
-    { provide: PUB_SUB, useValue: new PubSub() },
     GqlAuthGuard,
     GqlRolesGuard,
     DataLoaderService,
@@ -263,35 +243,32 @@ import { DevicesModule } from '../devices/devices.module';
     AuditLogsResolver,
     TenantsResolver,
     RealtimeEventsResolver,
-    RecordEventsResolver,
     QueryResolver,
     MedicalRecordFieldResolver,
     AccessGrantFieldResolver,
     AuditLogFieldResolver,
     MutationResolver,
+    RecordEventsResolver,
     IdempotencyService,
-    ComplexityPlugin,
     ApqService,
+    ComplexityPlugin,
     ApqPlugin,
+    {
+      provide: PUB_SUB,
+      useValue: new PubSub(),
+    },
   ],
-  exports: [GqlAuthGuard, GqlRolesGuard, PUB_SUB],
+  exports: [DataLoaderService],
 })
-export class GraphqlModule { }
+export class GraphqlModule {}
 
-function extractWsToken(connectionParams?: { [key: string]: any }): string | undefined {
-  if (!connectionParams || typeof connectionParams !== 'object') {
+function extractWsToken(connectionParams: any): string | undefined {
+  if (!connectionParams) {
     return undefined;
   }
-
-  const authHeader =
-    connectionParams.authorization ?? connectionParams.Authorization ?? connectionParams.authToken;
-  if (typeof authHeader !== 'string') {
-    return undefined;
+  const authHeader = connectionParams.Authorization ?? connectionParams.authorization;
+  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice('Bearer '.length);
   }
-
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.slice(7);
-  }
-
-  return authHeader;
+  return connectionParams.token ?? connectionParams.accessToken;
 }
