@@ -29,6 +29,15 @@ export class RefreshTokenStoreService {
     return createHash('sha256').update(token).digest('hex');
   }
 
+  /**
+   * Hash a password-reset token before it is stored or compared, so the raw
+   * token from the email link is never persisted in plaintext. Mirrors the
+   * SHA-256 pattern used for refresh tokens above.
+   */
+  hashPasswordResetToken(token: string): string {
+    return this.hash(token);
+  }
+
   private activeKey(sessionId: string): string {
     return `rt:active:${sessionId}`;
   }

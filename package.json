@@ -71,6 +71,7 @@
     "version:sdk": "node scripts/version-sdk.js",
     "publish:sdk": "bash scripts/publish-sdk.sh",
     "docs:generate": "ts-node -r tsconfig-paths/register 'src/swaggeropenapi-documentation-with-full-schema-coverage/export-openapi.ts'",
+    "docs:check": "npm run docs:generate && git diff --exit-code -- docs/openapi.json",
     "generate:graphql-types": "graphql-codegen --config codegen.yml"
   },
   "repository": {

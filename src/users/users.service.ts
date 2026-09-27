@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -94,9 +95,17 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
-  async updateUser(userId: string, updateUserDto: UpdateUserDto): Promise<User> {
+  async updateUser(
+    userId: string,
+    updateUserDto: UpdateUserDto,
+    requester?: { id: string; role: MedicalRole },
+  ): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+
+    if (requester && requester.role !== MedicalRole.ADMIN && requester.id !== userId) {
+      throw new ForbiddenException('You can only update your own profile');
+    }
 
     if (updateUserDto.firstName !== undefined) user.firstName = updateUserDto.firstName;
     if (updateUserDto.lastName !== undefined) user.lastName = updateUserDto.lastName;
@@ -118,7 +127,14 @@ export class UsersService {
       .getMany();
   }
 
-  async findOne(id: string): Promise<User> {
+  async findOne(
+    id: string,
+    requester?: { id: string; role: MedicalRole },
+  ): Promise<User> {
+    if (requester && requester.role !== MedicalRole.ADMIN && requester.id !== id) {
+      throw new ForbiddenException('You can only view your own profile');
+    }
+
     const user = await this.usersRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.patientProfile', 'patientProfile')
