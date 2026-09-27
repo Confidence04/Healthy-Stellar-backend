@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Brackets } from 'typeorm';
 import { DrugRecall, RecallStatus } from '../entities/drug-recall.entity';
 import { RecallImpactReport } from '../entities/recall-impact-report.entity';
 import { PharmacyInventoryService } from './pharmacy-inventory.service';
@@ -119,6 +119,57 @@ export class DrugRecallService {
       relations: ['drug'],
       order: { initiationDate: 'DESC' },
     });
+
+    if (!report) {
+      throw new NotFoundException(`Recall impact report for recall ${recallId} not found`);
+    }
+
+    return report;
+  }
+
+  async findImpactedPrescriptions(recall: DrugRecall): Promise<RemotePrescription[]> {
+    const excludedStatuses = [
+      PrescriptionStatus.DRAFT,
+      PrescriptionStatus.CANCELLED,
+      PrescriptionStatus.EXPIRED,
+      PrescriptionStatus.DENIED,
+    ];
+
+    if (!recall.drug) {
+      throw new NotFoundException('Recall drug details are unavailable');
+    }
+
+    const drugName = recall.drug.name?.trim().toLowerCase();
+    const genericName = recall.drug.genericName?.trim().toLowerCase();
+    const ndcCodes = recall.affectedNdcCodes?.filter(Boolean) ?? [];
+
+    if (!drugName && !genericName && !ndcCodes.length) {
+      return [];
+    }
+
+    const query = this.prescriptionRepository.createQueryBuilder('prescription')
+      .where('prescription.deletedAt IS NULL')
+      .andWhere('prescription.status NOT IN (:...excludedStatuses)', { excludedStatuses });
+
+    query.andWhere(
+      new Brackets((qb) => {
+        if (ndcCodes.length) {
+          qb.orWhere('prescription.ndcCode IN (:...ndcCodes)', { ndcCodes });
+        }
+
+        if (drugName) {
+          qb.orWhere('LOWER(prescription.medicationName) = :drugName', { drugName });
+          qb.orWhere('LOWER(prescription.genericName) = :drugName', { drugName });
+        }
+
+        if (genericName) {
+          qb.orWhere('LOWER(prescription.medicationName) = :genericName', { genericName });
+          qb.orWhere('LOWER(prescription.genericName) = :genericName', { genericName });
+        }
+      }),
+    );
+
+    return query.getMany();
   }
 
   async addAffectedInventory(id: string, inventoryData: any[]): Promise<DrugRecall> {

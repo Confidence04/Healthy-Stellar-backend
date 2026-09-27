@@ -14,7 +14,7 @@ import {
   MEDICAL_PERMISSIONS_KEY,
   MEDICAL_ROLES_KEY,
   MEDICAL_SPECIALTY_KEY,
-} from '../decorators/medical-rbac.decorator';
+} from './medical-rbac.decorator';
 import {
   AuditAction,
   MedicalDepartment,
@@ -23,9 +23,9 @@ import {
   MedicalSpecialty,
 } from '../enums/medical-roles.enum';
 import { MedicalUser } from '../interfaces/medical-rbac.interface';
-import { EmergencyOverrideService } from '../services/emergency-override.service';
-import { MedicalAuditService } from '../services/medical-audit.service';
-import { MedicalPermissionsService } from '../services/medical-permissions.service';
+import { EmergencyOverrideService } from './emergency-override.service';
+import { MedicalAuditService } from './medical-audit.service';
+import { MedicalPermissionsService } from './medical-permissions.service';
 
 @Injectable()
 export class MedicalRbacGuard implements CanActivate {

@@ -13,7 +13,8 @@ import { ReportJob } from './entities/report-job.entity';
 import { AccessControlModule } from '../access-control/access-control.module';
 import { ProviderPatientModule } from '../provider-patient/provider-patient.module';
 import { QUEUE_NAMES } from '../queues/queue.constants';
-import { MailModule } from '../Email Notification Service for Critical Access Events/mail.module';
+import { MailModule } from '../email-notification-service-for-critical-access-events/mail.module';
+import { AuditModule } from '../common/audit/audit.module';
 
 import { MedicalRecordsService } from './services/medical-records.service';
 import { ClinicalTemplatesService } from './services/clinical-templates.service';
@@ -28,12 +29,14 @@ import { ClinicalNotesService } from './services/clinical-notes.service';
 
 import { MedicalRecordsController } from './controllers/medical-records.controller';
 import { ClinicalTemplatesController } from './controllers/clinical-templates.controller';
+import { MedicalRecordSearchSubscriber } from './subscribers/medical-record-search.subscriber';
 import { ConsentController } from './controllers/consent.controller';
 import { FileUploadController } from './controllers/file-upload.controller';
 import { ReportingController } from './controllers/reporting.controller';
 import { ClinicalNotesController } from './controllers/clinical-notes.controller';
 
 import { ReportProcessor } from './processors/report.processor';
+import { OcrProcessor } from './processors/ocr.processor';
 
 import { Patient } from '../patients/entities/patient.entity';
 
@@ -43,6 +46,7 @@ import { Patient } from '../patients/entities/patient.entity';
     AccessControlModule,
     ProviderPatientModule,
     MailModule,
+    AuditModule,
     TypeOrmModule.forFeature([
       MedicalRecord,
       MedicalRecordVersion,
@@ -54,9 +58,10 @@ import { Patient } from '../patients/entities/patient.entity';
       ReportJob,
       Patient,
     ]),
-    BullModule.registerQueue({
-      name: QUEUE_NAMES.REPORTS,
-    }),
+    BullModule.registerQueue(
+      { name: QUEUE_NAMES.REPORTS },
+      { name: QUEUE_NAMES.OCR },
+    ),
   ],
   controllers: [
     MedicalRecordsController,
@@ -78,6 +83,8 @@ import { Patient } from '../patients/entities/patient.entity';
     EmailService,
     ClinicalNotesService,
     ReportProcessor,
+    OcrProcessor,
+    MedicalRecordSearchSubscriber,
   ],
   exports: [
     MedicalRecordsService,

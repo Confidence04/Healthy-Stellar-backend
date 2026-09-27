@@ -6,8 +6,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PubSub } from 'graphql-subscriptions';
 import { join } from 'path';
 import depthLimit from 'graphql-depth-limit';
-import { fieldExtensionsEstimator, getComplexity, simpleEstimator } from 'graphql-query-complexity';
 import { GraphQLError } from 'graphql';
+
 
 import { Patient } from '../patients/entities/patient.entity';
 import { Record } from '../records/entities/record.entity';
@@ -47,41 +47,12 @@ import { AuthTokenService } from '../auth/services/auth-token.service';
 import { SessionManagementService } from '../auth/services/session-management.service';
 import { PubSubModule } from '../pubsub/pubsub.module';
 import { GraphqlPubSubService } from '../pubsub/services/graphql-pubsub.service';
+import { AuditModule } from '../common/audit/audit.module';
+import { AuditLogService } from '../common/services/audit-log.service';
 import { IdempotencyService } from './services/idempotency.service';
 import { ComplexityPlugin } from './plugins/complexity.plugin';
-import { IdempotencyEntity } from './entities/idempotency.entity';
-import { GdprModule } from '../gdpr/gdpr.module';
-import { DevicesModule } from '../devices/devices.module';
-import { GqlAuthGuard, GqlRolesGuard } from './guards/gql-auth.guard';
-import { DataLoaderService } from './dataloaders/dataloader.service';
-import { UserDataLoader } from './dataloaders/user.dataloader';
-import { RecordDataLoader } from './dataloaders/record.dataloader';
-import { MedicalRecordResolver } from './resolvers/medical-record.resolver';
-import { PatientResolver } from './resolvers/patient.resolver';
-import { RecordsResolver } from './resolvers/records.resolver';
-import { AccessGrantsResolver } from './resolvers/access-grants.resolver';
-import { UsersResolver } from './resolvers/users.resolver';
-import { AuditLogsResolver } from './resolvers/audit-logs.resolver';
-import { TenantsResolver } from './resolvers/tenants.resolver';
-import { RealtimeEventsResolver } from './resolvers/realtime-events.resolver';
-import {
-  QueryResolver,
-  MedicalRecordFieldResolver,
-  AccessGrantFieldResolver,
-  AuditLogFieldResolver,
-} from './resolvers/query.resolver';
-import { MutationResolver } from './resolvers/mutation.resolver';
-import { PUB_SUB } from './resolvers/subscriptions.resolver';
-import { RecordEventsResolver } from './subscriptions/record-events.resolver';
-
-// Services from other modules
-import { AuthModule } from '../auth/auth.module';
-import { AuthTokenService } from '../auth/services/auth-token.service';
-import { SessionManagementService } from '../auth/services/session-management.service';
-import { PubSubModule } from '../pubsub/pubsub.module';
-import { GraphqlPubSubService } from '../pubsub/services/graphql-pubsub.service';
-import { IdempotencyService } from './services/idempotency.service';
-import { ComplexityPlugin } from './plugins/complexity.plugin';
+import { ApqPlugin } from './plugins/apq.plugin';
+import { ApqService } from './services/apq.service';
 import { IdempotencyEntity } from './entities/idempotency.entity';
 import { GdprModule } from '../gdpr/gdpr.module';
 import { DevicesModule } from '../devices/devices.module';
@@ -95,17 +66,17 @@ import { DevicesModule } from '../devices/devices.module';
     PatientModule,
     AuthModule,
     PubSubModule,
-    GdprModule,
-    DevicesModule,
+    AuditModule,
     GraphQLModule.forRootAsync<ApolloDriverConfig>({
       driver: ApolloDriver,
-      imports: [ConfigModule, AuthModule, PubSubModule],
-      inject: [ConfigService, AuthTokenService, SessionManagementService, GraphqlPubSubService],
+      imports: [ConfigModule, AuthModule, PubSubModule, AuditModule],
+      inject: [ConfigService, AuthTokenService, SessionManagementService, GraphqlPubSubService, AuditLogService],
       useFactory: (
         config: ConfigService,
         authTokenService: AuthTokenService,
         sessionManagementService: SessionManagementService,
         graphqlPubSubService: GraphqlPubSubService,
+        auditLogService: AuditLogService,
       ) => {
         const isProd = config.get<string>('NODE_ENV') === 'production';
         return {
@@ -114,114 +85,151 @@ import { DevicesModule } from '../devices/devices.module';
           playground: !isProd,
           introspection: !isProd,
 
-          // Depth limit to prevent malicious deeply nested queries
-          validationRules: [depthLimit(7)],
-          plugins: [
-            {
-              async requestDidStart() {
-                return {
-                  async didResolveOperation(requestContext: any) {
-                    const complexity = getComplexity({
-                      schema: requestContext.schema,
-                      operationName: requestContext.request.operationName,
-                      query: requestContext.document,
-                      variables: requestContext.request.variables,
-                      estimators: [
-                        fieldExtensionsEstimator(),
-                        simpleEstimator({ defaultComplexity: 1 }),
-                      ],
-                    });
-
-                    const complexityThreshold = 150;
-                    if (complexity > complexityThreshold) {
-                      throw new GraphQLError(
-                        `Query complexity ${complexity} exceeds maximum allowed complexity of ${complexityThreshold}. ` +
-                          `Reduce nested selection depth, page results, or trim requested fields.`,
-                        {
-                          extensions: {
-                            code: 'GRAPHQL_QUERY_COMPLEXITY_EXCEEDED',
-                            complexity,
-                            threshold: complexityThreshold,
-                          },
-                        },
-                      );
-                    }
-                  },
-                };
-              },
-            },
-          ],
+          // Depth limit enforcement (DoS protection), validation-rule level:
+          // this runs during GraphQL's validation phase, before the
+          // operation is even resolved, so a rejected query never reaches a
+          // resolver. The env-configured value here is the hard,
+          // environment-wide ceiling; per-tenant tightening of both depth
+          // and complexity limits, plus the per-field complexity budget
+          // itself, are enforced by ComplexityPlugin (see
+          // ./plugins/complexity.plugin.ts), which is auto-registered via
+          // its `@Plugin()` decorator + inclusion in `providers` below.
+          validationRules: [depthLimit(Number(process.env.GRAPHQL_MAX_QUERY_DEPTH ?? 7))],
 
           // graphql-ws (recommended transport) for GraphQL subscriptions
           subscriptions: {
             'graphql-ws': {
+              keepAlive: 10_000,
               onConnect: async (ctx: any) => {
-                const token = extractWsToken(ctx.connectionParams);
-                if (!token) {
-                  throw new GraphQLError('Unauthorized: missing token', {
-                    extensions: { code: 'UNAUTHENTICATED' },
-                  });
-                }
+                const clientIp = ctx.extra?.clientIp || ctx.extra?.request?.ip || 'unknown';
 
-                const payload = authTokenService.verifyAccessToken(token);
-                if (!payload) {
-                  throw new GraphQLError('Unauthorized: invalid token', {
-                    extensions: { code: 'UNAUTHENTICATED' },
-                  });
-                }
-
-                const isSessionValid = await sessionManagementService.isSessionValid(payload.sessionId);
-                if (!isSessionValid) {
-                  throw new GraphQLError('Session expired or revoked', {
-                    extensions: { code: 'UNAUTHENTICATED' },
-                  });
-                }
-
-                await sessionManagementService.updateSessionActivity(payload.sessionId);
-
-                const connectionId = graphqlPubSubService.generateConnectionId();
                 try {
-                  await graphqlPubSubService.registerConnection(payload.userId, connectionId);
-                } catch {
-                  throw new GraphQLError('Forbidden: subscription connection limit reached', {
-                    extensions: { code: 'FORBIDDEN' },
+                  const token = extractWsToken(ctx.connectionParams);
+                  if (!token) {
+                    await auditLogService.log({
+                      entityType: 'GraphQLSubscription',
+                      entityId: 'unknown',
+                      action: 'CONNECTION_FAILED',
+                      userId: 'anonymous',
+                      changes: { reason: 'missing_token' },
+                      metadata: {
+                        clientIp,
+                        reason: 'Unauthorized: missing token',
+                      },
+                    });
+                    throw new GraphQLError('Unauthorized: missing token', {
+                      extensions: { code: 'UNAUTHENTICATED' },
+                    });
+                  }
+
+                  const payload = authTokenService.verifyAccessToken(token);
+                  if (!payload) {
+                    await auditLogService.log({
+                      entityType: 'GraphQLSubscription',
+                      entityId: 'unknown',
+                      action: 'CONNECTION_FAILED',
+                      userId: 'anonymous',
+                      changes: { reason: 'invalid_token' },
+                      metadata: {
+                        clientIp,
+                        reason: 'Unauthorized: invalid token',
+                      },
+                    });
+                    throw new GraphQLError('Unauthorized: invalid token', {
+                      extensions: { code: 'UNAUTHENTICATED' },
+                    });
+                  }
+
+                  const isSessionValid = await sessionManagementService.isSessionValid(payload.sessionId);
+                  if (!isSessionValid) {
+                    await auditLogService.log({
+                      entityType: 'GraphQLSubscription',
+                      entityId: payload.userId,
+                      action: 'CONNECTION_FAILED',
+                      userId: payload.userId,
+                      changes: { reason: 'session_expired' },
+                      metadata: {
+                        clientIp,
+                        reason: 'Session expired or revoked',
+                      },
+                    });
+                    throw new GraphQLError('Session expired or revoked', {
+                      extensions: { code: 'UNAUTHENTICATED' },
+                    });
+                  }
+
+                  await sessionManagementService.updateSessionActivity(payload.sessionId);
+
+                  const connectionId = graphqlPubSubService.generateConnectionId();
+                  try {
+                    await graphqlPubSubService.registerConnection(payload.userId, connectionId);
+                  } catch (error) {
+                    await auditLogService.log({
+                      entityType: 'GraphQLSubscription',
+                      entityId: payload.userId,
+                      action: 'CONNECTION_FAILED',
+                      userId: payload.userId,
+                      changes: { reason: 'connection_registration_failed' },
+                      metadata: {
+                        clientIp,
+                        reason: error instanceof Error ? error.message : 'Unknown error',
+                      },
+                    });
+                    throw new GraphQLError('Failed to register subscription connection', {
+                      extensions: { code: 'INTERNAL_SERVER_ERROR' },
+                    });
+                  }
+
+                  return {
+                    userId: payload.userId,
+                    sessionId: payload.sessionId,
+                    connectionId,
+                  };
+                } catch (error) {
+                  if (error instanceof GraphQLError) {
+                    throw error;
+                  }
+                  throw new GraphQLError('Unauthorized', {
+                    extensions: { code: 'UNAUTHENTICATED' },
                   });
                 }
-
-                ctx.extra.user = payload;
-                ctx.extra.connectionId = connectionId;
-                ctx.extra.connectionParams = ctx.connectionParams ?? {};
               },
               onDisconnect: async (ctx: any) => {
-                const userId = ctx?.extra?.user?.userId;
-                const connectionId = ctx?.extra?.connectionId;
-                if (userId && connectionId) {
-                  await graphqlPubSubService.unregisterConnection(userId, connectionId);
+                const connectionId = ctx.connectionParams?.connectionId;
+                if (connectionId) {
+                  await graphqlPubSubService.unregisterConnection(connectionId);
                 }
               },
             },
           },
 
-          // Inject per-request DataLoaders into GQL context
-          context: ({ req, extra }: { req?: any; extra?: any }) => {
-            const request = req ?? extra?.request ?? { headers: {} };
-            if (!request.user && extra?.user) {
-              request.user = extra.user;
-            }
+          context: ({ req, extra }: { req: any; extra: any }) => {
+            const user = req?.user ?? extra?.user;
+            const connectionParams = extra?.connectionParams ?? req?.connectionParams;
+
+            // DataLoaders are request-scoped: a fresh DataLoaderService is
+            // created per GraphQL operation so batching/caching never leaks
+            // across requests. The individual loaders are also exposed on the
+            // context (patientLoader/providerLoader) for field resolvers that
+            // read them directly.
+            const loaders = new DataLoaderService();
 
             return {
-              req: request,
-              user: request.user,
-              connectionParams: extra?.connectionParams ?? {},
-              // loaders are populated by the DataLoaderService in each resolver
+              req,
+              user,
+              connectionParams,
+              loaders,
+              patientLoader: loaders.patients,
+              providerLoader: loaders.providers,
             };
           },
         };
       },
     }),
+    GdprModule,
+    DevicesModule,
   ],
   providers: [
-    { provide: PUB_SUB, useValue: new PubSub() },
     GqlAuthGuard,
     GqlRolesGuard,
     DataLoaderService,
@@ -235,33 +243,32 @@ import { DevicesModule } from '../devices/devices.module';
     AuditLogsResolver,
     TenantsResolver,
     RealtimeEventsResolver,
-    RecordEventsResolver,
     QueryResolver,
     MedicalRecordFieldResolver,
     AccessGrantFieldResolver,
     AuditLogFieldResolver,
     MutationResolver,
+    RecordEventsResolver,
     IdempotencyService,
+    ApqService,
     ComplexityPlugin,
+    ApqPlugin,
+    {
+      provide: PUB_SUB,
+      useValue: new PubSub(),
+    },
   ],
-  exports: [GqlAuthGuard, GqlRolesGuard, PUB_SUB],
+  exports: [DataLoaderService],
 })
 export class GraphqlModule {}
 
-function extractWsToken(connectionParams?: { [key: string]: any }): string | undefined {
-  if (!connectionParams || typeof connectionParams !== 'object') {
+function extractWsToken(connectionParams: any): string | undefined {
+  if (!connectionParams) {
     return undefined;
   }
-
-  const authHeader =
-    connectionParams.authorization ?? connectionParams.Authorization ?? connectionParams.authToken;
-  if (typeof authHeader !== 'string') {
-    return undefined;
+  const authHeader = connectionParams.Authorization ?? connectionParams.authorization;
+  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice('Bearer '.length);
   }
-
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.slice(7);
-  }
-
-  return authHeader;
+  return connectionParams.token ?? connectionParams.accessToken;
 }

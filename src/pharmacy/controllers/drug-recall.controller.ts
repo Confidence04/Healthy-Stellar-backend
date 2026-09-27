@@ -95,6 +95,19 @@ export class DrugRecallController {
     return this.recallService.initiateRecall(id);
   }
 
+  @Post(':id/notify')
+  async notifyAffected(@Param('id') id: string) {
+    const recall = await this.recallService.findOne(id);
+    const impact = await this.recallService.computeRecallImpact(id);
+    await this.recallService.notifyAffectedUsers(recall, impact);
+    return impact;
+  }
+
+  @Get(':id/impact')
+  async getRecallImpact(@Param('id') id: string) {
+    return await this.recallService.getRecallImpact(id);
+  }
+
   @Post(':id/complete')
   @ApiOperation({ summary: 'Mark a recall as completed' })
   async completeRecall(@Param('id', ParseUUIDPipe) id: string) {

@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
+
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HttpModule } from '@nestjs/axios';
 
 // Entities
 import { Drug } from './entities/drug.entity';
 import { Prescription } from './entities/prescription.entity';
+import { PrescriptionItem } from './entities/prescription-item.entity';
+import { PrescriptionDispenseRecord } from './entities/prescription-dispense-record.entity';
 import { DrugInteraction } from './entities/drug-interaction.entity';
 import { DrugRecall } from './entities/drug-recall.entity';
 import { RecallImpactReport } from './entities/recall-impact-report.entity';
@@ -53,4 +56,4 @@ import { NotificationsModule } from '../notifications/notifications.module';
     RecallNotificationService,
   ],
 })
-export class PharmacyModule {}
+export class PharmacyModule { }

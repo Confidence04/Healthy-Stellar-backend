@@ -12,15 +12,20 @@ import { QueryPerformanceSubscriber } from './subscribers/query-performance.subs
 import { RequestContextMiddleware } from './middleware/request-context.middleware';
 import { AuditContextGuard } from './guards/audit-context.guard';
 import { DatabaseQueryGuard } from './guards/database-query.guard';
+import { TenantQuotaGuard } from './guards/tenant-quota.guard';
 import { RedisLockService } from './utils/redis-lock.service';
 import { QueryPerformanceController } from './controllers/query-performance.controller';
+import { ErrorDocumentationController } from './controllers/error-documentation.controller';
+import { CacheModule } from './cache/cache.module';
+import { PhiAuditInterceptor } from './interceptors/phi-audit.interceptor';
 
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([AuditLog, SensitiveAuditLog])],
-  controllers: [QueryPerformanceController],
+  imports: [TypeOrmModule.forFeature([AuditLog, SensitiveAuditLog]), CacheModule],
+  controllers: [QueryPerformanceController, ErrorDocumentationController],
   providers: [
     AuditLogService,
+    PhiAuditInterceptor,
     DataEncryptionService,
     TracingService,
     QueryPerformanceMonitor,
@@ -33,10 +38,12 @@ import { QueryPerformanceController } from './controllers/query-performance.cont
     QueryPerformanceSubscriber,
     AuditContextGuard,
     DatabaseQueryGuard,
+    TenantQuotaGuard,
     RedisLockService,
   ],
   exports: [
     AuditLogService,
+    PhiAuditInterceptor,
     DataEncryptionService,
     TracingService,
     QueryPerformanceMonitor,
@@ -44,6 +51,7 @@ import { QueryPerformanceController } from './controllers/query-performance.cont
     QueryPerformanceSubscriber,
     AuditContextGuard,
     DatabaseQueryGuard,
+    TenantQuotaGuard,
     RedisLockService,
   ],
 })

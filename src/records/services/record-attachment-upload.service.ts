@@ -3,14 +3,18 @@ import {
   BadRequestException,
   NotFoundException,
   InternalServerErrorException,
+  UnprocessableEntityException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { RecordAttachment, AttachmentMimeType } from '../entities/record-attachment.entity';
+import { RecordAttachment, AttachmentMimeType, SignatureStatus } from '../entities/record-attachment.entity';
 import { Record } from '../entities/record.entity';
 import { EncryptionService } from '../../encryption/services/encryption.service';
 import { IpfsService } from './ipfs.service';
 import { AuditLogService } from '../../common/services/audit-log.service';
+import { DigitalSignatureService, SignatureVerificationResult } from './digital-signature.service';
+import { SignatureAlertService } from './signature-alert.service';
 
 // Allowed MIME types as per requirements
 const ALLOWED_MIME_TYPES = [
@@ -22,8 +26,18 @@ const ALLOWED_MIME_TYPES = [
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
+// Magic bytes signatures for file type detection
+const MAGIC_BYTES: Record<string, { mimeType: string; signature: Buffer }[]> = {
+  'application/pdf': [{ mimeType: 'application/pdf', signature: Buffer.from([0x25, 0x50, 0x44, 0x46]) }], // %PDF
+  'image/jpeg': [{ mimeType: 'image/jpeg', signature: Buffer.from([0xff, 0xd8, 0xff]) }], // FFD8FF
+  'image/png': [{ mimeType: 'image/png', signature: Buffer.from([0x89, 0x50, 0x4e, 0x47]) }], // .PNG
+  'application/dicom': [{ mimeType: 'application/dicom', signature: Buffer.from('DICM') }], // DICM
+};
+
 @Injectable()
 export class RecordAttachmentUploadService {
+  private readonly logger = new Logger(RecordAttachmentUploadService.name);
+
   constructor(
     @InjectRepository(RecordAttachment)
     private attachmentRepository: Repository<RecordAttachment>,
@@ -32,6 +46,8 @@ export class RecordAttachmentUploadService {
     private encryptionService: EncryptionService,
     private ipfsService: IpfsService,
     private auditLogService: AuditLogService,
+    private digitalSignatureService: DigitalSignatureService,
+    private signatureAlertService: SignatureAlertService,
   ) {}
 
   /**
@@ -66,6 +82,9 @@ export class RecordAttachmentUploadService {
 
     // Step 2: Validate file
     this.validateFile(file);
+
+    // Step 2b: Extract and verify digital signature (before encryption)
+    const signatureResult = this.extractAndVerifySignature(file.buffer, file.mimetype);
 
     // Step 3: Encrypt file using patient's KEK
     let encryptedRecord;
@@ -102,9 +121,38 @@ export class RecordAttachmentUploadService {
       fileSize: file.size,
       uploadedBy,
       isDeleted: false,
+      signatureStatus: signatureResult.status,
+      signatureAlgorithm: signatureResult.algorithm ?? null,
+      signerCertificate: signatureResult.signerCertificate ?? null,
+      signedAt: signatureResult.signedAt ?? null,
+      signatureMetadata: signatureResult.metadata ? JSON.stringify(signatureResult.metadata) : null,
     });
 
     const savedAttachment = await this.attachmentRepository.save(attachment);
+
+    // Step 5b: Trigger alert for invalid signatures
+    if (signatureResult.status === SignatureStatus.INVALID) {
+      await this.signatureAlertService.alertInvalidSignature({
+        attachmentId: savedAttachment.id,
+        recordId,
+        userId: uploadedBy,
+        status: signatureResult.status,
+        algorithm: signatureResult.algorithm,
+        metadata: signatureResult.metadata,
+      });
+    } else if (signatureResult.status === SignatureStatus.VALID) {
+      await this.signatureAlertService.logValidSignature({
+        attachmentId: savedAttachment.id,
+        recordId,
+        userId: uploadedBy,
+        status: signatureResult.status,
+        algorithm: signatureResult.algorithm,
+        metadata: {
+          ...signatureResult.metadata,
+          signedAt: signatureResult.signedAt?.toISOString(),
+        },
+      });
+    }
 
     // Step 6: Log audit entry
     await this.auditLogService.log({
@@ -142,6 +190,60 @@ export class RecordAttachmentUploadService {
     }
 
     return attachment;
+  }
+
+  /**
+   * Verify digital signature of an attachment on retrieval.
+   * Fetches the original file from IPFS and verifies its signature.
+   */
+  async verifyAttachmentSignature(
+    attachmentId: string,
+    publicKeyPem?: string,
+  ): Promise<{ status: SignatureStatus; details: Record<string, any> }> {
+    const attachment = await this.attachmentRepository.findOne({
+      where: { id: attachmentId, isDeleted: false },
+    });
+
+    if (!attachment) {
+      throw new NotFoundException(`Attachment with ID ${attachmentId} not found`);
+    }
+
+    if (attachment.mimeType !== AttachmentMimeType.PDF) {
+      return {
+        status: SignatureStatus.UNSIGNED,
+        details: { reason: 'Non-PDF documents do not support digital signature verification' },
+      };
+    }
+
+    if (attachment.signatureStatus === SignatureStatus.UNSIGNED) {
+      return {
+        status: SignatureStatus.UNSIGNED,
+        details: { reason: 'No digital signature found in document' },
+      };
+    }
+
+    try {
+      const encryptedBytes = await this.ipfsService.fetch(attachment.cid);
+      const verificationResult = this.digitalSignatureService.verifyPdfSignature(
+        encryptedBytes,
+        publicKeyPem || '',
+      );
+
+      return {
+        status: verificationResult.status,
+        details: {
+          algorithm: verificationResult.algorithm,
+          signedAt: verificationResult.signedAt,
+          hasCertificate: !!verificationResult.signerCertificate,
+          metadata: verificationResult.metadata,
+        },
+      };
+    } catch (error) {
+      return {
+        status: SignatureStatus.INVALID,
+        details: { error: (error as Error).message },
+      };
+    }
   }
 
   /**
@@ -185,6 +287,76 @@ export class RecordAttachmentUploadService {
   }
 
   /**
+   * Detect file type from magic bytes
+   */
+  private detectFileType(buffer: Buffer): string | null {
+    for (const [mimeType, signatures] of Object.entries(MAGIC_BYTES)) {
+      for (const { signature } of signatures) {
+        if (buffer.length >= signature.length && buffer.subarray(0, signature.length).equals(signature)) {
+          return mimeType;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Extract and verify digital signature from uploaded file.
+   * Only processes PDF files; other formats are marked as unsigned.
+   *
+   * On upload, we extract signature metadata and validate the PKCS#7
+   * structure. Full cryptographic verification happens on retrieval
+   * when the stored public key is available.
+   */
+  private extractAndVerifySignature(
+    buffer: Buffer,
+    mimetype: string,
+  ): SignatureVerificationResult {
+    if (mimetype !== AttachmentMimeType.PDF) {
+      return {
+        status: SignatureStatus.UNSIGNED,
+      };
+    }
+
+    const hasSignature = this.digitalSignatureService.hasPdfSignature(buffer);
+    if (!hasSignature) {
+      return {
+        status: SignatureStatus.UNSIGNED,
+      };
+    }
+
+    const extracted = this.digitalSignatureService.extractPdfSignature(buffer);
+    if (!extracted) {
+      return {
+        status: SignatureStatus.INVALID,
+        metadata: { reason: 'Failed to parse PKCS#7 signature structure' },
+      };
+    }
+
+    const isValidStructure = this.digitalSignatureService.isValidPdfSignatureStructure(buffer);
+    if (!isValidStructure) {
+      return {
+        status: SignatureStatus.INVALID,
+        algorithm: extracted.algorithm,
+        signerCertificate: extracted.signerCert?.toString('base64'),
+        signedAt: extracted.signingTime ?? undefined,
+        metadata: { reason: 'PKCS#7 structure validation failed' },
+      };
+    }
+
+    return {
+      status: SignatureStatus.VALID,
+      algorithm: extracted.algorithm,
+      signerCertificate: extracted.signerCert?.toString('base64'),
+      signedAt: extracted.signingTime ?? undefined,
+      metadata: {
+        byteRange: extracted.byteRange,
+        hasCertificate: !!extracted.signerCert,
+      },
+    };
+  }
+
+  /**
    * Validate file before encryption
    */
   private validateFile(file: Express.Multer.File): void {
@@ -208,6 +380,21 @@ export class RecordAttachmentUploadService {
 
     if (file.size === 0) {
       throw new BadRequestException('File is empty');
+    }
+
+    // Magic bytes content inspection
+    const detectedType = this.detectFileType(file.buffer);
+    if (detectedType && detectedType !== file.mimetype) {
+      this.logger.warn('File type mismatch detected', {
+        declaredType: file.mimetype,
+        detectedType,
+        filename: file.originalname,
+        fileSize: file.size,
+      });
+
+      throw new UnprocessableEntityException(
+        `File content does not match declared type. Declared: ${file.mimetype}, Detected: ${detectedType}`,
+      );
     }
   }
 

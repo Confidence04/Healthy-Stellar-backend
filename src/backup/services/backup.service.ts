@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { spawn } from 'child_process';
 import { createWriteStream } from 'fs';
@@ -117,7 +117,15 @@ export class BackupService {
   constructor(
     @InjectRepository(BackupLog)
     private backupLogRepository: Repository<BackupLog>,
-  ) {}
+  ) {
+    this.validateRequiredConfiguration();
+  }
+
+  private validateRequiredConfiguration(): void {
+    if (!this.encryptionKey) {
+      throw new Error('BACKUP_ENCRYPTION_KEY environment variable is required for BackupService');
+    }
+  }
 
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async scheduledFullBackup() {
@@ -388,7 +396,7 @@ export class BackupService {
 
     const oldBackups = await this.backupLogRepository.find({
       where: {
-        startedAt: { $lt: cutoffDate } as any,
+        startedAt: LessThan(cutoffDate),
         status: BackupStatus.COMPLETED,
       },
     });
