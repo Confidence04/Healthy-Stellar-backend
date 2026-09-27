@@ -84,13 +84,15 @@ export class ReportScheduleService {
         `Dispatching scheduled report: scheduleId=${schedule.id} type=${schedule.reportType} recipients=${schedule.recipients.length}`,
       );
 
-      for (const recipientId of schedule.recipients) {
-        await this.reportsService.requestReport(recipientId, schedule.format).catch((err) => {
-          this.logger.error(
-            `Failed to dispatch report for schedule ${schedule.id} to ${recipientId}`,
-            err.stack,
-          );
-        });
+      for (const recipientEmail of schedule.recipients) {
+        await this.reportsService
+          .requestReport(schedule.patientId, schedule.format, schedule.tenantId, recipientEmail)
+          .catch((err) => {
+            this.logger.error(
+              `Failed to dispatch report for schedule ${schedule.id} to ${recipientEmail}`,
+              err.stack,
+            );
+          });
       }
     }
   }
