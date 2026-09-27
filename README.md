@@ -261,76 +261,45 @@ Configured via `helmet()` in `src/main.ts` using `src/security/http-security.con
 
 ## API Endpoints
 
-### Medical Records
+The complete route reference is available in the [Swagger UI](/api) when the
+application is running and in the generated [OpenAPI specification](docs/openapi.json).
+The prefixes below summarize the API by domain; URI-versioned endpoints are
+normally served under `/v1` (version-neutral routes are not).
 
-| Method | Path                                   | Description      |
-| ------ | -------------------------------------- | ---------------- |
-| POST   | `/medical-records`                     | Create record    |
-| GET    | `/medical-records/search`              | Search records   |
-| GET    | `/medical-records/:id`                 | Get by ID        |
-| GET    | `/medical-records/:id/versions`        | Version history  |
-| GET    | `/medical-records/timeline/:patientId` | Patient timeline |
-| PUT    | `/medical-records/:id`                 | Update           |
-| PUT    | `/medical-records/:id/archive`         | Archive          |
-| PUT    | `/medical-records/:id/restore`         | Restore          |
-| DELETE | `/medical-records/:id`                 | Soft delete      |
-
-### Clinical Templates
-
-| Method | Path                      | Description           |
-| ------ | ------------------------- | --------------------- |
-| POST   | `/clinical-templates`     | Create template       |
-| GET    | `/clinical-templates`     | List active templates |
-| GET    | `/clinical-templates/:id` | Get by ID             |
-| PUT    | `/clinical-templates/:id` | Update                |
-| DELETE | `/clinical-templates/:id` | Delete                |
-
-### Consent Management
-
-| Method | Path                           | Description     |
-| ------ | ------------------------------ | --------------- |
-| POST   | `/consents`                    | Create consent  |
-| GET    | `/consents/record/:recordId`   | By record       |
-| GET    | `/consents/patient/:patientId` | By patient      |
-| GET    | `/consents/check`              | Check existence |
-| GET    | `/consents/:id`                | Get by ID       |
-| PUT    | `/consents/:id/revoke`         | Revoke          |
-
-### File Attachments
-
-| Method | Path                            | Description |
-| ------ | ------------------------------- | ----------- |
-| POST   | `/attachments/upload`           | Upload file |
-| GET    | `/attachments/record/:recordId` | By record   |
-| GET    | `/attachments/:id`              | Get by ID   |
-| GET    | `/attachments/:id/download`     | Download    |
-| DELETE | `/attachments/:id`              | Delete      |
-
-### Reporting
-
-| Method | Path                                  | Description     |
-| ------ | ------------------------------------- | --------------- |
-| GET    | `/reports/patient/:patientId/summary` | Patient summary |
-| GET    | `/reports/activity`                   | Activity report |
-| GET    | `/reports/consent`                    | Consent report  |
-| GET    | `/reports/statistics`                 | Statistics      |
-
-### Clinical Workflow
-
-| Method | Path                                            | Description               |
-| ------ | ----------------------------------------------- | ------------------------- |
-| GET    | `/diagnosis/:id/treatment-plans`                | Plans by diagnosis        |
-| GET    | `/diagnosis/patient/:patientId/treatment-plans` | Patient diagnoses + plans |
-| GET    | `/treatment-plans`                              | Search treatment plans    |
-| GET    | `/treatment-plans/:id/progress`                 | Plan progress             |
-| GET    | `/pharmacy/prescriptions`                       | Search prescriptions      |
-| PATCH  | `/pharmacy/prescriptions/:id`                   | Update prescription       |
-| POST   | `/pharmacy/prescriptions/:id/notes`             | Add note                  |
-| GET    | `/pharmacy/prescriptions/:id/notes`             | Get notes                 |
-| POST   | `/clinical-notes`                               | Create note               |
-| GET    | `/clinical-notes`                               | List notes                |
-| POST   | `/clinical-notes/:id/sign`                      | Sign note                 |
-| GET    | `/clinical-notes/:id/completeness`              | Completeness check        |
+- **Access control and roles:** `/access`, `/users`, `/policies`, `/medical-rbac`, `/role-templates`
+- **Administration and operations:** `/admin/*`, `/operator/runbooks`
+- **Analytics and governance:** `/analytics/*`, `/governance/reports`, `/financial-reports`
+- **Appointments:** `/appointments/*`, `/consultations`, `/doctor-availability`
+- **Authentication and identity:** `/auth/*`, `/oauth2`, `/providers`
+- **Backup and recovery:** `/backup`
+- **Beds, departments, and wards:** `/bed-occupancy`, `/beds`, `/departments`, `/wards`
+- **Billing and insurance:** `/billing/*`, `/claims`, `/denials`, `/appeals`, `/insurance`, `/medical-codes`, `/payments`, `/subscriptions`
+- **Clinical records:** `/medical-records`, `/clinical-notes`, `/clinical-templates`, `/consents`, `/attachments`
+- **Clinical workflow:** `/diagnosis`, `/treatment-plans`, `/procedures`, `/care-templates`, `/outcomes`, `/decision-support`
+- **Data governance and validation:** `/api/v1/data-residency`, `/gdpr`, `/research-export`, `/medical-validation`, `/admin/tenants/*/field-validation-rules`
+- **EHR import:** `/ehr-import`, `/admin/import`
+- **Emergency and incidents:** `/emergency`, `/emergency-medical-info`, `/incidents`
+- **FHIR interoperability:** `/fhir/r4`
+- **Hospital configuration and registry:** `/hospital-configuration`, `/hospital-registry`
+- **Infection control:** `/infection-control`
+- **Laboratory:** `/laboratory/*`, `/lab-*`
+- **Medical staff:** `/medical-staff`, `/medical-staff/credentials`
+- **Medication administration:** `/medication-administration`, `/medication-reconciliation`, `/adverse-reactions`, `/barcode-verification`
+- **Monitoring and compliance:** `/health`, `/healthcare-monitoring`, `/clinical-alerts`, `/compliance`, `/dashboard`, `/monitoring`, `/metrics`
+- **Notifications:** `/notifications/*`
+- **Pathology:** `/pathology/*`
+- **Patients and portal:** `/patients`, `/guardians`, `/patient-portal`
+- **Pharmacy:** `/pharmacy/*`, `/cds-hooks`
+- **Provider-patient coordination:** `/provider-patient/handoffs`
+- **Queues and jobs:** `/jobs`, `/dlq`, `/admin/dlq`
+- **Reporting:** `/reports`, `/admin/report-schedules`
+- **Security and key management:** `/healthcare-security`, `/key-management/kek`, `/admin/key-management`, `/csp-report`, `/admin/api-keys`, `/admin/secret-rotation`
+- **Stellar integration:** `/stellar/*`
+- **Surgical management:** `/surgical`
+- **Telemedicine:** `/telemedicine/*`
+- **Tenant management:** `/admin/tenants`, `/admin/tenant-quota`, `/onboarding`
+- **Webhooks:** `/webhooks`
+- **Platform services:** `/audit`, `/audit-logs`, `/api/versions`, `/consistency`, `/errors`, `/i18n`, `/performance`, `/admin/query-performance`, `/admin/reconciliation`, `/admin/feature-flags`, `/admin/projections`
 
 ## Webhooks
 
@@ -347,18 +316,12 @@ scheme.
 
 ## Postman Collection
 
-Import from `docs/postman/MedChain.postman_collection.json`. Environments: Local, Testnet, Staging. Run the **Login** request first — all subsequent requests use the JWT automatically.
+Import [`docs/postman/MedChain.postman_collection.json`](docs/postman/MedChain.postman_collection.json). Environments: Local, Testnet, Staging. The collection is generated from OpenAPI; see [how to regenerate the API references](docs/OPENAPI_REGENERATION.md).
 
 ## Database Schema
 
-| Entity                 | Purpose                          |
-| ---------------------- | -------------------------------- |
-| `MedicalRecord`        | Main record with version control |
-| `MedicalRecordVersion` | Version history / audit trail    |
-| `MedicalHistory`       | Activity timeline                |
-| `ClinicalNoteTemplate` | Reusable note templates          |
-| `MedicalAttachment`    | File attachments                 |
-| `MedicalRecordConsent` | Consent and sharing              |
+The authoritative database schema is defined by the [TypeORM migrations](src/migrations/)
+and corresponding entity definitions in `src/`.
 
 ## Error Handling
 
