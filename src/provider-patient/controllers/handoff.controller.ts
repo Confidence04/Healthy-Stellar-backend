@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -49,7 +50,11 @@ export class HandoffController {
   @Roles(UserRole.ADMIN, UserRole.PHYSICIAN, UserRole.NURSE, UserRole.PATIENT)
   @ApiOperation({ summary: 'Handoff history for a patient timeline' })
   @ApiParam({ name: 'patientId' })
-  getPatientTimeline(@Param('patientId') patientId: string) {
+  getPatientTimeline(@Param('patientId') patientId: string, @Req() req: Request) {
+    const user = req.user as any;
+    if (user?.role === UserRole.PATIENT && user.userId !== patientId) {
+      throw new ForbiddenException('You can only view your own handoff timeline');
+    }
     return this.service.getPatientTimeline(patientId);
   }
 
