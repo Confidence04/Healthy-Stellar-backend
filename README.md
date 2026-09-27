@@ -10,6 +10,7 @@ Comprehensive documentation for the NestJS backend that interfaces with Stellar 
 - [Local Development with Docker](#local-development-with-docker)
 - [Installation & Setup](#installation--setup)
 - [Configuration](#configuration)
+- [Scripts Reference](#scripts-reference)
 - [Core Modules](#core-modules)
 - [API Endpoints](#api-endpoints)
 - [Postman Collection](#postman-collection)
@@ -35,43 +36,134 @@ The NestJS backend serves as the application layer between the frontend and Stel
 
 ## Project Structure
 
-```
-src/
-├── main.ts                          # Application entry point
-├── app.module.ts                    # Root application module
-├── config/
-│   └── database.config.ts           # Database configuration
-├── common/
-│   └── filters/
-│       └── http-exception.filter.ts  # Global exception filter
-└── medical-records/
-    ├── medical-records.module.ts    # Medical records module
-    ├── entities/                     # Database entities
-    │   ├── medical-record.entity.ts
-    │   ├── medical-record-version.entity.ts
-    │   ├── medical-history.entity.ts
-    │   ├── clinical-note-template.entity.ts
-    │   ├── medical-attachment.entity.ts
-    │   └── medical-record-consent.entity.ts
-    ├── dto/                          # Data Transfer Objects
-    │   ├── create-medical-record.dto.ts
-    │   ├── update-medical-record.dto.ts
-    │   ├── search-medical-records.dto.ts
-    │   ├── create-consent.dto.ts
-    │   └── create-clinical-template.dto.ts
-    ├── services/                     # Business logic services
-    │   ├── medical-records.service.ts
-    │   ├── clinical-templates.service.ts
-    │   ├── consent.service.ts
-    │   ├── file-upload.service.ts
-    │   └── reporting.service.ts
-    └── controllers/                  # API controllers
-        ├── medical-records.controller.ts
-        ├── clinical-templates.controller.ts
-        ├── consent.controller.ts
-        ├── file-upload.controller.ts
-        └── reporting.controller.ts
-```
+### Entry points
+
+| File | Purpose |
+|---|---|
+| `src/main.ts` | HTTP API process — bootstraps the NestJS app, applies global middleware, starts listening |
+| `src/worker.ts` | BullMQ worker process — runs queue processors without exposing an HTTP port |
+| `src/worker.module.ts` | NestJS module that wires only the queue processors (no HTTP layer) |
+| `packages/sdk/` | Auto-generated TypeScript client SDK published to npm |
+
+---
+
+### Module map
+
+Modules are grouped below by domain. Each entry is a top-level directory under `src/`.
+
+#### Clinical
+
+| Directory | Description |
+|---|---|
+| `patients/` | Patient registry, demographics, geo-restrictions, notification preferences |
+| `medical-records/` | Core medical records with version control, consent, clinical notes, attachments |
+| `records/` | Versioned record storage with IPFS anchoring and Stellar event-sourcing |
+| `pharmacy/` | Drugs, prescriptions, drug interactions, recalls, inventory, controlled substances |
+| `laboratory/` | Lab orders, results, specimens, equipment, quality control |
+| `appointments/` | Scheduling, consultations, doctor availability |
+| `diagnosis/` | Diagnosis management and ICD code handling |
+| `treatment-planning/` | Care plans, clinical guidelines, decision-support alerts |
+| `medication-administration/` | MAR (Medication Administration Record), barcode verification, adverse reactions |
+| `infection-control/` | Outbreak tracking, isolation protocols, antibiotic resistance surveillance |
+| `emergency-operations/` | Triage, rapid-response teams, critical care coordination |
+| `emergency-medical-info/` | Break-glass emergency access to patient data |
+| `pathology/` | Histology, cytology, genetic testing, digital pathology |
+| `hospital-registry/` | Hospital and facility configuration |
+
+#### Billing & Finance
+
+| Directory | Description |
+|---|---|
+| `billing/` | Claims, invoices, insurance, payment processing |
+
+#### Blockchain & Data Integrity
+
+| Directory | Description |
+|---|---|
+| `stellar/` | Stellar Horizon / Soroban SDK wrapper, transaction retry/recovery |
+| `stellar-stream/` | Real-time Stellar event streaming and re-indexing |
+| `ledger-reconciliation/` | Detects discrepancies between the DB and on-chain state |
+| `reconciliation/` | General data reconciliation jobs |
+| `blockchain/` | Low-level blockchain utilities and abstract contract interface |
+| `event-store/` | Append-only event-sourcing store for domain aggregates |
+| `projections/` | CQRS read-model projections built from the event store |
+
+#### Platform / Infrastructure
+
+| Directory | Description |
+|---|---|
+| `app.module.ts` | Root module — wires all application modules together |
+| `common/` | Shared DTOs, interceptors, filters, guards, audit, pagination, throttler, circuit-breaker |
+| `config/` | Database config, env validation schema, logger config |
+| `auth/` | JWT, MFA, API keys, session management, OIDC/OAuth2 |
+| `OAuth2/` | OIDC provider module (wraps the auth OIDC flow) |
+| `rbac/` | Role-Based Access Control policy engine |
+| `roles/` | Medical RBAC decorators and guards (MedicalRole enum, MedicalRbacGuard) |
+| `access-control/` | Fine-grained access grants, revocations, and consent enforcement |
+| `tenant/` | Multi-tenancy — tenant resolution, Row-Level Security (RLS), tenant context |
+| `tenant-config/` | Per-tenant feature flags and configuration overrides |
+| `notifications/` | WebSocket gateway, transactional outbox, email, notification preferences |
+| `queues/` | BullMQ job queues, DLQ, queue dashboard |
+| `graphql/` | Apollo GraphQL server, subscriptions, dataloaders, cursor pagination |
+| `pubsub/` | GraphQL PubSub transport (Redis-backed) |
+| `subscriptions/` | GraphQL subscription lifecycle management |
+| `metrics/` | Prometheus metrics, Grafana dashboards, SLO tracking |
+| `health/` | `/health` endpoint (Terminus health indicators) |
+| `analytics/` | Admin statistics and platform-level activity tracking |
+| `jobs/` | Scheduled background jobs (cron-based) |
+| `data-retention/` | Automated data-retention policy enforcement |
+| `webhooks/` | Outbound webhook delivery, signature verification |
+| `idempotency/` | Idempotency-key middleware for safe request replays |
+| `dlq/` | Dead-letter queue inspection and replay |
+| `incident/` | Incident tracking and escalation |
+| `operator-runbook/` | Runbook endpoints for on-call operators |
+| `versioning/` | API versioning helpers and deprecation interceptor |
+| `admin/` | Admin-only endpoints, user management, system configuration |
+| `security/` | Security headers config, IP allowlist, brute-force detection |
+| `key-management/` | AWS KMS / local envelope encryption, DEK rotation |
+| `encryption/` | PHI field-level encryption (AES-GCM, deterministic column transforms) |
+| `i18n/` | Internationalisation (nestjs-i18n), translation files, i18n exception filter |
+| `feature-flags/` | Runtime feature-flag evaluation |
+| `circuit-breaker/` _(under `common/`)_ | Cockatiel-based circuit breaker for external calls |
+
+#### Compliance & GDPR
+
+| Directory | Description |
+|---|---|
+| `gdpr/` | GDPR data-subject requests (access, erasure, portability) |
+| `data-residency/` | Geo-based data residency enforcement |
+| `fhir/` | FHIR R4 resource mapping and bulk export |
+| `research-export/` | De-identified, k-anonymous data exports for research |
+| `ehr-import/` | Structured import of external EHR data (HL7, CSV) |
+| `governance-analytics/` | Compliance dashboards and governance metrics |
+| `consistency-checker/` | Cross-system data consistency validation |
+
+---
+
+### Directories that need cleanup ⚠️
+
+The following directories are **named after GitHub issues** rather than their domain, which makes the codebase harder to navigate. They contain valid implementations but should be renamed or merged in a future clean-up PR.
+
+| Directory | Status | Recommended action |
+|---|---|---|
+| `src/Auto-Generate TypeScript Client SDK from OpenAPI Spec/` | Duplicate — CI workflows only | Move workflows to `.github/workflows/`; delete directory |
+| `src/SwaggerOpenAPI Documentation with Full Schema Coverage/` | Contains `export-openapi.ts` | Move script to `scripts/`; delete directory |
+| `src/Profile and Optimize Database Query Performance Under Load/` | Contains benchmark scripts | Merge into `scripts/`; delete directory |
+| `src/profile-and-optimize-database-query-performance-under-load/` | Duplicate of above (different casing) | Delete after merging |
+| `src/Dockerfile and Docker Compose for Production-Ready Containerization/` | Contains CI yml files | Move to `.github/workflows/`; delete directory |
+| `src/Build Admin Analytics Dashboard Endpoints/` | Unclear overlap with `analytics/` | Audit and merge or delete |
+| `src/Telemedicine and Remote/` | Contains spaces in name; likely overlaps with… | Merge into `telemedicine-and-remote/` and delete |
+| `src/telemedicine-and-remote/` | …this directory | Keep this one; delete the spaced variant |
+| `src/Tenant Provisioning and Onboarding Workflow/` | Overlaps with… | Merge into `tenant-provisioning-and-onboarding-workflow/` |
+| `src/tenant-provisioning-and-onboarding-workflow/` | …this directory | Keep; delete the spaced variant |
+| `src/Department and Ward Management/` | Unclear if wired into app.module | Audit and either wire or delete |
+| `src/Surgical Management System/` | Unclear if wired into app.module | Audit and either wire or delete |
+| `src/Email Notification Service for Critical Access Events/` | Likely superseded by `notifications/` | Audit and delete if redundant |
+| `src/Hospital config/` | Likely superseded by `hospital-registry/` | Audit and merge or delete |
+| `src/Migration-CLI/` | Likely superseded by TypeORM CLI scripts | Audit and delete if redundant |
+| `src/modules/` | Contains a `patient` sub-module alongside `src/patients/` | Audit which is canonical; delete the other |
+
+> Track clean-up work in a dedicated issue. Do not import from the spaced-name directories in new code.
 
 ## Local Development with Docker
 
@@ -172,20 +264,59 @@ npm run start:dev
 The application will be available at `http://localhost:3000`
 Swagger documentation will be available at `http://localhost:3000/api`
 
+## Scripts Reference
+
+The project has 66 npm scripts. A full reference — including descriptions, prerequisites, and safety warnings for destructive scripts — is in **[docs/scripts.md](docs/scripts.md)**.
+
+Quick-start summary:
+
+```bash
+npm run start:dev          # API with hot-reload
+npm run migration:run      # apply pending DB migrations
+npm run seed               # load development reference data
+npm run test               # unit tests
+npm run test:e2e           # end-to-end tests (requires Docker)
+npm run load-test:ci       # k6 load test + CI gate (requires k6)
+npm run build:sdk          # build the TypeScript client SDK
+```
+
+---
+
 ## Configuration
 
-### Environment Variables
+### Environment variables
 
-- `DB_HOST` - Database host (default: localhost)
-- `DB_PORT` - Database port (default: 5432)
-- `DB_USERNAME` - Database username (default: postgres)
-- `DB_PASSWORD` - Database password (default: postgres)
-- `DB_NAME` - Database name (default: healthy_stellar)
-- `PORT` - Application port (default: 3000)
-- `NODE_ENV` - Environment (development/production)
-- `UPLOAD_PATH` - File upload directory (default: ./storage/uploads)
-- `JWT_SECRET` - JWT secret key for authentication
-- `JWT_EXPIRES_IN` - JWT expiration time
+Copy `.env.example` to `.env` and fill in the values:
+
+```bash
+cp .env.example .env
+```
+
+`.env.example` is the authoritative reference for every environment variable the application reads. Variables are grouped by area and annotated with:
+
+- `[REQUIRED]` — must be set before the app starts in production
+- `[OPTIONAL]` — has a safe default; override only when needed
+- `[SECRET]` — never commit the real value; use a secrets manager in production
+
+**Key sections in `.env.example`:**
+
+| Section | Variables |
+|---|---|
+| Application | `NODE_ENV`, `PORT`, `API_URL`, `APP_BASE_URL` |
+| Database (primary) | `DATABASE_URL` / `DB_HOST` … `DB_POOL_MAX` |
+| Database (read replica) | `DB_REPLICA_HOST` … `DB_REPLICA_POOL_MAX` |
+| Redis | `REDIS_URL` / `REDIS_HOST` … `REDIS_DB` |
+| JWT & Auth | `JWT_SECRET`, `JWT_EXPIRATION`, `REFRESH_TOKEN_SECRET` |
+| Encryption / KMS | `ENCRYPTION_MASTER_KEY`, `MASTER_KEY`, `KMS_ENABLED`, `AWS_*` |
+| Stellar / Soroban | `STELLAR_SECRET_KEY`, `STELLAR_CONTRACT_ID`, `SOROBAN_RPC_URL` |
+| IPFS | `IPFS_NODE_URL`, `IPFS_GATEWAY`, `IPFS_FALLBACK_GATEWAY` |
+| Email / SMTP | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM_ADDRESS` |
+| Telemedicine | `TELEMEDICINE_SIGNALING_URL`, `TELEMEDICINE_TOKEN_SECRET` |
+| Research export | `RESEARCH_EXPORT_BUCKET`, `RESEARCH_K_ANONYMITY` |
+| EHR import | `EHR_IMPORT_S3_BUCKET`, `EHR_IMPORT_MAX_RETRIES` |
+| GraphQL subscriptions | `SUBSCRIPTIONS_IDLE_TIMEOUT_MS`, `SUBSCRIPTIONS_MAX_PER_CONNECTION` |
+| Ops / alerting | `OPS_SLACK_WEBHOOK_URL`, `QUEUE_DEPTH_THRESHOLD` |
+| Migrations | `MIGRATION_EXECUTOR`, `CONFIRM_PRODUCTION_MIGRATION` |
 
 ## Security Headers
 
@@ -416,17 +547,25 @@ The backend now includes an integrated clinical workflow surface across diagnosi
 
 ## Testing
 
-### Running Tests
+See **[docs/scripts.md](docs/scripts.md)** for the full list of test scripts and their prerequisites.
+
+### Quick reference
 
 ```bash
 # Unit tests
 npm run test
 
-# E2E tests
+# Unit tests with coverage
+npm run test:cov
+
+# E2E tests (requires Docker — starts a PostgreSQL container)
 npm run test:e2e
 
-# Test coverage
-npm run test:cov
+# Full coverage (unit + e2e)
+npm run test:all:cov
+
+# HIPAA/GDPR compliance tests
+npm run test:compliance
 ```
 
 ## Deployment
